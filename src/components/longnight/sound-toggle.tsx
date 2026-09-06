@@ -1,9 +1,19 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
-import { isSoundOn, toggleSound } from "@/lib/sound";
+import {
+  armFirstGestureAudio,
+  isSoundOn,
+  startSoundIfPossible,
+  toggleSound,
+} from "@/lib/sound";
 
 export function SoundToggle() {
   const [on, setOn] = useState(() => isSoundOn());
+
+  useEffect(() => {
+    startSoundIfPossible();
+    armFirstGestureAudio();
+  }, []);
 
   return (
     <button

@@ -18,7 +18,7 @@ const FRAME_COUNT = 900;
 const CACHE_LIMIT = 240;
 const LOAD_WINDOW = 56;
 /** Higher = snappier easing of the displayed frame toward the target. */
-const EASE_PER_SECOND = 7;
+const EASE_PER_SECOND = 10;
 
 const frameUrl = (i: number) =>
   `frames/night/f_${String(i + 1).padStart(4, "0")}.jpg`;
@@ -66,6 +66,7 @@ export function Journey() {
     let targetIndex = 0;
     let displayedIndex = 0;
     let drawnIndex = -1;
+    let backgroundIndex = 0;
     let lastTick = performance.now();
     let destroyed = false;
 
@@ -227,6 +228,23 @@ export function Journey() {
         }
       }
       paint(Math.round(clamp(displayedIndex, 0, FRAME_COUNT - 1)));
+
+      // Background-buffer the whole film at low priority: the live scrub
+      // always takes the fetch slots first; this fills everything else so
+      // every later pass through the night plays straight from cache.
+      if (inflight.size < 4 && backgroundIndex < FRAME_COUNT) {
+        while (
+          backgroundIndex < FRAME_COUNT &&
+          (cache.has(backgroundIndex) || inflight.has(backgroundIndex))
+        ) {
+          backgroundIndex += 1;
+        }
+        if (backgroundIndex < FRAME_COUNT) {
+          ensure(backgroundIndex);
+          backgroundIndex += 1;
+        }
+      }
+
       frame = window.requestAnimationFrame(tick);
     };
 
