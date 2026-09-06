@@ -1,0 +1,12 @@
+{
+  "name": "The Long Night",
+  "short_name": "The Long Night",
+  "description": "A field atlas of the world's mythologies after dark.",
+  "background_color": "#0e1630",
+  "theme_color": "#0e1630",
+  "display": "browser",
+  "icons": [
+    { "src": "assets/brand/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "assets/brand/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
