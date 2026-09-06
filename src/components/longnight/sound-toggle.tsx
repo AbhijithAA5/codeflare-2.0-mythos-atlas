@@ -12,8 +12,8 @@ export function SoundToggle() {
       aria-pressed={on}
       onClick={() => setOn(toggleSound())}
     >
-      <span aria-hidden="true">{on ? "♪" : "♪̸"}</span>
-      <span>Sound {on ? "on" : "off"}</span>
+      <span aria-hidden="true">♪</span>
+      <span>Sound: {on ? "on" : "off"}</span>
     </button>
   );
 }

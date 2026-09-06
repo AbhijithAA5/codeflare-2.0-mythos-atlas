@@ -7,28 +7,23 @@ import "../scroll-scrub/scroll-scrub.css";
 
 /**
  * Frame-sequence journey: the film ships as 900 individual frames and the
- * visitor's scroll position directly picks the frame to paint on a canvas.
- * No video seeking anywhere, so nothing can skip: the drawn frame always
- * answers exactly to the scroll. Frames load lazily around the current
- * position with an LRU cache; the nearest loaded frame paints while the
- * exact one streams in.
+ * visitor's scroll position selects the frame painted on a canvas. The
+ * displayed frame eases toward the scroll target (time-based lerp), so wheel
+ * steps become fluid motion; frames stream in lazily around the position and
+ * live in a browser-managed image cache that is cheap enough to keep both
+ * scroll directions instant.
  */
 
 const FRAME_COUNT = 900;
-const CACHE_LIMIT = 96;
+const CACHE_LIMIT = 240;
 const LOAD_WINDOW = 56;
+/** Higher = snappier easing of the displayed frame toward the target. */
+const EASE_PER_SECOND = 7;
 
 const frameUrl = (i: number) =>
   `frames/night/f_${String(i + 1).padStart(4, "0")}.jpg`;
 
-type Decoded = ImageBitmap | HTMLImageElement;
-
-function loadFrame(i: number): Promise<Decoded> {
-  if (typeof createImageBitmap === "function") {
-    return fetch(frameUrl(i))
-      .then((response) => response.blob())
-      .then((blob) => createImageBitmap(blob));
-  }
+function loadFrame(i: number): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const image = new Image();
     image.decoding = "async";
@@ -69,17 +64,17 @@ export function Journey() {
     let dirty = true;
     let frame = 0;
     let targetIndex = 0;
+    let displayedIndex = 0;
     let drawnIndex = -1;
+    let lastTick = performance.now();
     let destroyed = false;
 
     const bands = Array.from(
       root.querySelectorAll<HTMLElement>("[data-ln-band]"),
     ).map((band) => ({ band, start: 0, end: 0 }));
 
-    type Entry = { decoded: Decoded; used: number };
-    const cache = new Map<number, Entry>();
+    const cache = new Map<number, HTMLImageElement>();
     const inflight = new Map<number, Promise<void>>();
-    let clock = 0;
 
     const evict = () => {
       if (cache.size <= CACHE_LIMIT) {
@@ -91,35 +86,35 @@ export function Journey() {
         if (da !== db) {
           return db - da; // farthest from the target first
         }
-        return a[1].used - b[1].used;
+        return a[0] - b[0];
       });
       while (cache.size > CACHE_LIMIT) {
-        const [index, entry] = entries.shift()!;
+        const [index] = entries.shift()!;
         cache.delete(index);
-        if ("close" in entry.decoded && typeof entry.decoded.close === "function") {
-          entry.decoded.close();
-        }
       }
     };
 
     const ensure = (index: number) => {
-      if (cache.has(index) || inflight.has(index) || inflight.size >= 10) {
+      if (
+        index < 0 ||
+        index >= FRAME_COUNT ||
+        cache.has(index) ||
+        inflight.has(index) ||
+        inflight.size >= 10
+      ) {
         return;
       }
       const promise = loadFrame(index)
-        .then((decoded) => {
+        .then((image) => {
           if (destroyed) {
-            if ("close" in decoded && typeof decoded.close === "function") {
-              decoded.close();
-            }
             return;
           }
-          cache.set(index, { decoded, used: ++clock });
+          cache.set(index, image);
           evict();
           dirty = true;
         })
         .catch(() => {
-          // A failed frame just never paints; its neighbours cover it.
+          // A failed frame never paints; its neighbours cover it.
         })
         .finally(() => {
           inflight.delete(index);
@@ -127,19 +122,16 @@ export function Journey() {
       inflight.set(index, promise);
     };
 
-    const drawCover = (decoded: Decoded) => {
+    const drawCover = (image: HTMLImageElement) => {
       const width = canvas.width;
       const height = canvas.height;
-      const iw = "width" in decoded ? decoded.width : 0;
-      const ih = "height" in decoded ? decoded.height : 0;
-      if (!iw || !ih) {
-        return;
-      }
+      const iw = image.naturalWidth || 1920;
+      const ih = image.naturalHeight || 1080;
       const scale = Math.max(width / iw, height / ih);
       const dw = iw * scale;
       const dh = ih * scale;
       context.drawImage(
-        decoded as CanvasImageSource,
+        image,
         (width - dw) / 2,
         (height - dh) / 2,
         dw,
@@ -149,21 +141,21 @@ export function Journey() {
 
     const paint = (index: number) => {
       for (let distance = 0; distance < FRAME_COUNT; distance += 1) {
-        const candidate =
-          distance === 0
-            ? index
-            : index - distance >= 0
-              ? index - distance
-              : index + distance;
-        const entry = cache.get(candidate);
-        if (entry) {
-          entry.used = ++clock;
-          if (candidate !== drawnIndex || dirty) {
-            drawCover(entry.decoded);
-            drawnIndex = candidate;
-          }
-          return;
+        const up = index - distance;
+        const down = index + distance;
+        const candidate = cache.has(up)
+          ? up
+          : cache.has(down)
+            ? down
+            : -1;
+        if (candidate === -1) {
+          continue;
         }
+        if (candidate !== drawnIndex) {
+          drawCover(cache.get(candidate)!);
+          drawnIndex = candidate;
+        }
+        return;
       }
       context.fillStyle = "#090d1f";
       context.fillRect(0, 0, canvas.width, canvas.height);
@@ -189,10 +181,13 @@ export function Journey() {
       dirty = true;
     };
 
-    const tick = () => {
+    const tick = (now: number) => {
       if (destroyed) {
         return;
       }
+      const dt = Math.min(now - lastTick, 100);
+      lastTick = now;
+
       if (dirty) {
         dirty = false;
         const pageY = window.scrollY || window.pageYOffset;
@@ -222,7 +217,16 @@ export function Journey() {
         }
       }
 
-      paint(targetIndex);
+      // Ease the displayed frame toward the scroll target: chunky wheel
+      // steps become continuous motion at the display's own frame rate.
+      if (displayedIndex !== targetIndex) {
+        const factor = reduceMotion ? 1 : 1 - Math.exp(-dt * 0.001 * EASE_PER_SECOND);
+        displayedIndex += (targetIndex - displayedIndex) * factor;
+        if (Math.abs(targetIndex - displayedIndex) < 0.05) {
+          displayedIndex = targetIndex;
+        }
+      }
+      paint(Math.round(clamp(displayedIndex, 0, FRAME_COUNT - 1)));
       frame = window.requestAnimationFrame(tick);
     };
 
@@ -258,11 +262,6 @@ export function Journey() {
       window.removeEventListener("resize", onResize);
       window.removeEventListener("orientationchange", layout);
       root.style.removeProperty("--ss-progress");
-      for (const entry of cache.values()) {
-        if ("close" in entry.decoded && typeof entry.decoded.close === "function") {
-          entry.decoded.close();
-        }
-      }
       cache.clear();
     };
   }, []);
