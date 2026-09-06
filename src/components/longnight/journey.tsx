@@ -19,7 +19,7 @@ const CACHE_LIMIT = 96;
 const LOAD_WINDOW = 56;
 
 const frameUrl = (i: number) =>
-  `assets/frames/night/f_${String(i + 1).padStart(4, "0")}.jpg`;
+  `frames/night/f_${String(i + 1).padStart(4, "0")}.jpg`;
 
 type Decoded = ImageBitmap | HTMLImageElement;
 
@@ -103,7 +103,7 @@ export function Journey() {
     };
 
     const ensure = (index: number) => {
-      if (cache.has(index) || inflight.has(index)) {
+      if (cache.has(index) || inflight.has(index) || inflight.size >= 10) {
         return;
       }
       const promise = loadFrame(index)
