@@ -29,9 +29,12 @@ Hosted on GitHub Pages:
 ## Tech
 
 - React 19 + Vite + TypeScript, plain hand-written CSS (no UI framework)
-- Scroll-scrub engine: blob-backed seeking, lazy segment loading, exact-frame
-  posters, iOS gesture priming, `prefers-reduced-motion` fallbacks, and
-  keyframe-dense encodes (GOP 2) so every seek lands on a real frame
+- Scroll-scrub journey: the film ships as 900 individual frames painted to a
+  canvas; the scroll position directly selects the frame, with lazy
+  neighbourhood loading and an LRU cache, so playback answers to the scroll
+  frame-for-frame in both directions (no video seeking anywhere)
+- Reduced-motion fallbacks, keyboard-operable interactions, focus-visible
+  states, and AA contrast throughout
 - Every painting, emblem, plate, sound and the journey film were generated
   for this build; no stock imagery anywhere
 - Typography: Cormorant Garamond, Inter Tight, IBM Plex Mono (Google Fonts)
