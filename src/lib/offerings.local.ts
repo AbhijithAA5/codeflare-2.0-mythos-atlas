@@ -76,16 +76,23 @@ export async function addOffering(input: {
   name: string;
   text: string;
   guide?: string;
-}): Promise<{ ok: true; items: OfferingRow[]; total: number }> {
-  const current = read();
-  const row: OfferingRow = {
-    id: Date.now(),
-    name: input.name.slice(0, 40),
-    text: input.text.slice(0, 120),
-    guide: input.guide ?? null,
-    created: new Date().toISOString().slice(0, 19),
-  };
-  const next = [row, ...current].slice(0, MAX_ROWS);
-  write(next);
-  return { ok: true, items: next, total: next.length };
+}): Promise<
+  | { ok: true; items: OfferingRow[]; total: number }
+  | { ok: false; error: string }
+> {
+  try {
+    const current = read();
+    const row: OfferingRow = {
+      id: Date.now(),
+      name: input.name.slice(0, 40),
+      text: input.text.slice(0, 120),
+      guide: input.guide ?? null,
+      created: new Date().toISOString().slice(0, 19),
+    };
+    const next = [row, ...current].slice(0, MAX_ROWS);
+    write(next);
+    return { ok: true, items: next, total: next.length };
+  } catch {
+    return { ok: false, error: "The wall did not answer. Try again in a moment." };
+  }
 }
